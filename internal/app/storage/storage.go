@@ -1,6 +1,8 @@
 package storage
 
-import "time"
+import (
+	"time"
+)
 
 type Order struct {
 	OrderUID          string    `json:"order_uid"`
@@ -20,13 +22,14 @@ type Order struct {
 }
 
 type Delivery struct {
-	Name    string `json:"name"`
-	Phone   string `json:"phone"`
-	Zip     string `json:"zip"`
-	City    string `json:"city"`
-	Address string `json:"address"`
-	Region  string `json:"region"`
-	Email   string `json:"email"`
+	DeliveryID int    `json:"-"`
+	Name       string `json:"name"`
+	Phone      string `json:"phone"`
+	Zip        string `json:"zip"`
+	City       string `json:"city"`
+	Address    string `json:"address"`
+	Region     string `json:"region"`
+	Email      string `json:"email"`
 }
 
 type Payment struct {
@@ -57,16 +60,6 @@ type Item struct {
 }
 
 type OrderRepository interface {
-	GetOrders()
-}
-
-type OrderRepo struct {
-}
-
-func NewOderRepo() *OrderRepo {
-	return &OrderRepo{}
-}
-
-func (r *OrderRepo) GetOrders() {
-
+	SaveOrder(Order) error
+	GetOrderByID(orderID string) (Order, error)
 }

@@ -1,21 +1,31 @@
 package server
 
 import (
+	"log"
 	"net/http"
 
+	"github.com/devkekops/wb-l0/internal/app/config"
 	"github.com/devkekops/wb-l0/internal/app/handlers"
 	"github.com/devkekops/wb-l0/internal/app/storage"
 	"github.com/devkekops/wb-l0/internal/app/subscriber"
 )
 
-func Serve() error {
-	orderRepo := storage.NewOderRepo()
+func Serve(cfg *config.Config) error {
+	orderRepo, err := storage.NewOrderRepoDB(cfg.DatabaseURI)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	subscriber, err := subscriber.NewSubscriber(cfg.NatsURI, orderRepo)
+	if err != nil {
+		log.Fatal(err)
+	}
+	go subscriber.Check()
+
 	baseHandler := handlers.NewBaseHandler(orderRepo)
-	subscriber := subscriber.NewSubscriber()
-	subscriber.Check()
 
 	server := &http.Server{
-		Addr:    "127.0.0.1:8080",
+		Addr:    cfg.RunAddress,
 		Handler: baseHandler,
 	}
 
