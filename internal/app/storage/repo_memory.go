@@ -20,6 +20,9 @@ func (r *OrderRepoMemory) SaveOrder(order Order) error {
 	r.mutex.Lock()
 	defer r.mutex.Unlock()
 
+	if _, ok := r.idToOrderMap[order.OrderUID]; ok {
+		return ErrOrderExists
+	}
 	r.idToOrderMap[order.OrderUID] = order
 	return nil
 }
@@ -27,6 +30,10 @@ func (r *OrderRepoMemory) SaveOrder(order Order) error {
 func (r *OrderRepoMemory) GetOrderByID(orderID string) (Order, error) {
 	r.mutex.RLock()
 	defer r.mutex.RUnlock()
+
+	if _, ok := r.idToOrderMap[orderID]; !ok {
+		return Order{}, ErrOrderNotExists
+	}
 
 	return r.idToOrderMap[orderID], nil
 }

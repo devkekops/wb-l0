@@ -1,6 +1,9 @@
 package storage
 
 import (
+	"database/sql"
+	"errors"
+
 	_ "github.com/jackc/pgx/v4/stdlib"
 	"github.com/jmoiron/sqlx"
 )
@@ -46,7 +49,7 @@ CREATE TABLE IF NOT EXISTS orders(
 	order_uid			VARCHAR(32) NOT NULL PRIMARY KEY,
 	delivery_id			INTEGER NOT NULL REFERENCES delivery(delivery_id),
 	payment_id			VARCHAR(32) NOT NULL REFERENCES payment(transaction),	
-	track_numer			VARCHAR(32),
+	track_number		VARCHAR(32),
 	entry				VARCHAR(32),
 	locale				VARCHAR(12),
 	internal_signature	VARCHAR(12),
@@ -74,58 +77,113 @@ func NewOrderRepoDB(databaseURI string) (*OrderRepoDB, error) {
 	}
 	db.MustExec(schema)
 
+	orderRepoMemory := NewOderRepoMemory()
+
+	queryGetItems := `SELECT * FROM item`
+	queryGetOrderItems := `SELECT * FROM order_items`
+	queryGetOrders := `SELECT * FROM orders INNER JOIN delivery ON orders.delivery_id = delivery.delivery_id INNER JOIN payment ON orders.payment_id = payment.transaction`
+
+	itemIDToItem := make(map[string]Item)
+	var items []Item
+	err = db.Select(&items, queryGetItems)
+	if err != nil {
+		return nil, err
+	}
+	for _, item := range items {
+		itemIDToItem[item.RID] = item
+	}
+
+	orderIDToItems := make(map[string][]Item)
+	var orderItems []OrderItem
+	err = db.Select(&orderItems, queryGetOrderItems)
+	if err != nil {
+		return nil, err
+	}
+	for _, orderItem := range orderItems {
+		orderIDToItems[orderItem.OrderID] = append(orderIDToItems[orderItem.OrderID], itemIDToItem[orderItem.ItemID])
+	}
+
+	var orders []Order
+	rows, err := db.Query(queryGetOrders)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var o Order
+		err = rows.Scan(&o.OrderUID, &o.DeliveryID, &o.PaymentID, &o.TrackNumber, &o.Entry, &o.Locale, &o.InternalSignature, &o.CustomerID, &o.DeliveryService, &o.ShardKey, &o.SmID, &o.DateCreated, &o.OofShard,
+			&o.Delivery.DeliveryID, &o.Delivery.Name, &o.Delivery.Phone, &o.Delivery.Zip, &o.Delivery.City, &o.Delivery.Address, &o.Delivery.Region, &o.Delivery.Email,
+			&o.Payment.Transaction, &o.Payment.RequestID, &o.Payment.Currency, &o.Payment.Provider, &o.Payment.Amount, &o.Payment.PaymentDt, &o.Payment.Bank, &o.Payment.DeliveryCost, &o.Payment.GoodsTotal, &o.Payment.CustomFee)
+		if err != nil {
+			return nil, err
+		}
+		o.Items = append(o.Items, orderIDToItems[o.OrderUID]...)
+
+		orders = append(orders, o)
+	}
+
+	//fmt.Println(orders)
+
+	for _, order := range orders {
+		orderRepoMemory.idToOrderMap[order.OrderUID] = order
+	}
+
 	r := &OrderRepoDB{
 		db:              db,
-		orderRepoMemory: NewOderRepoMemory(),
+		orderRepoMemory: orderRepoMemory,
 	}
 
 	return r, nil
 }
 
 func (r *OrderRepoDB) SaveOrder(order Order) error {
-	/*tx, err := r.db.Beginx()
-	if err != nil {
-		return err
-	}
-	defer func(tx *sqlx.Tx) {
-		err := tx.Rollback()
-		if err != nil {
-			log.Println(err)
-		}
-	}(tx)
-
-	var deliveryID int
 	querySaveDelivery := `INSERT INTO delivery (name, phone, zip, city, address, region, email) VALUES ($1, $2, $3, $4, $5, $6, $7) ON CONFLICT DO NOTHING RETURNING delivery_id`
-	tx.QueryRow(querySaveDelivery, order.Delivery).Scan(&deliveryID)
-	fmt.Println(deliveryID)
+	err := r.db.Get(&order.Delivery.DeliveryID, querySaveDelivery, order.Delivery.Name, order.Delivery.Phone, order.Delivery.Zip, order.Delivery.City, order.Delivery.Address, order.Delivery.Region, order.Delivery.Email)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			queryGetDeliveryID := `SELECT delivery_id FROM delivery WHERE name = $1 and phone = $2 and zip = $3 and city = $4 and address = $5 and region = $6 and email = $7`
+			err := r.db.Get(&order.Delivery.DeliveryID, queryGetDeliveryID, order.Delivery.Name, order.Delivery.Phone, order.Delivery.Zip, order.Delivery.City, order.Delivery.Address, order.Delivery.Region, order.Delivery.Email)
+			if err != nil {
+				return err
+			}
+		} else {
+			return err
+		}
+	}
+	order.DeliveryID = order.Delivery.DeliveryID
 
 	querySavePayment := `INSERT INTO payment (transaction, request_id, currency, provider, amount, payment_dt, bank, delivery_cost, goods_total, custom_fee)
-							VALUES (:transaction, :request_id, :currency, :provider, :amount, :payment_dt, :bank, :delivery_cost, :goods_total, :custom_fee) `
-	_, err = tx.NamedExec(querySavePayment, order.Payment)
+							VALUES (:transaction, :request_id, :currency, :provider, :amount, :payment_dt, :bank, :delivery_cost, :goods_total, :custom_fee)`
+	_, err = r.db.NamedExec(querySavePayment, order.Payment)
 	if err != nil {
 		return err
 	}
+	order.PaymentID = order.Payment.Transaction
 
 	querySaveItems := `INSERT INTO item (chrt_id, track_number, price, rid, name, sale, size, total_price, nm_id, brand, status)
-							VALUES (:chrt_id, :track_number, :price, :rid, :name, :sale, :size, :total_price, :nm_id, :brand, :status)`
-	_, err = tx.NamedExec(querySaveItems, order.Items)
+							VALUES (:chrt_id, :track_number, :price, :rid, :name, :sale, :size, :total_price, :nm_id, :brand, :status) ON CONFLICT DO NOTHING`
+	_, err = r.db.NamedExec(querySaveItems, order.Items)
 	if err != nil {
 		return err
 	}
 
-	querySaveOrder := `INSERT INTO orders (order_uid, delivery_id, payment_id, track_number, entry, locale, internal_signture, customer_id, delivery_service, shardkey, sm_id, date_created, oof_shard
-							VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $)`
-	_, err = tx.Exec(querySaveOrder, order.Items)
+	querySaveOrder := `INSERT INTO orders (order_uid, delivery_id, payment_id, track_number, entry, locale, internal_signature, customer_id, delivery_service, shardkey, sm_id, date_created, oof_shard)
+							VALUES (:order_uid, :delivery_id, :payment_id, :track_number, :entry, :locale, :internal_signature, :customer_id, :delivery_service, :shardkey, :sm_id, :date_created, :oof_shard)`
+	_, err = r.db.NamedExec(querySaveOrder, order)
 	if err != nil {
 		return err
-	};
+	}
 
-	err = tx.Commit()
-	if err != nil {
-		return err
-	}*/
+	querySaveOrderItems := `INSERT INTO order_items (order_id, item_id) VALUES ($1, $2)`
+	for _, item := range order.Items {
+		_, err := r.db.Exec(querySaveOrderItems, order.OrderUID, item.RID)
+		if err != nil {
+			return err
+		}
+	}
 
-	err := r.orderRepoMemory.SaveOrder(order)
+	err = r.orderRepoMemory.SaveOrder(order)
 	if err != nil {
 		return err
 	}

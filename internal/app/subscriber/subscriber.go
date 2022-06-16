@@ -1,17 +1,16 @@
 package subscriber
 
 import (
-	"fmt"
 	"log"
-	"runtime"
 
 	"github.com/devkekops/wb-l0/internal/app/storage"
 	"github.com/nats-io/nats.go"
 )
 
 type Subscriber struct {
-	c *nats.EncodedConn
-	r storage.OrderRepository
+	c      *nats.EncodedConn
+	r      storage.OrderRepository
+	recvCh chan *storage.Order
 }
 
 func NewSubscriber(natsURI string, repo storage.OrderRepository) (*Subscriber, error) {
@@ -24,21 +23,23 @@ func NewSubscriber(natsURI string, repo storage.OrderRepository) (*Subscriber, e
 		return nil, err
 	}
 
+	recvCh := make(chan *storage.Order)
+	c.BindRecvChan("hello", recvCh)
+
 	return &Subscriber{
-		c: c,
-		r: repo,
+		c:      c,
+		r:      repo,
+		recvCh: recvCh,
 	}, nil
 }
 
 func (s *Subscriber) Check() {
-	s.c.Subscribe("hello", func(order *storage.Order) {
-		fmt.Printf("Received a order: %+v\n", order)
+	for {
+		order := <-s.recvCh
+		//fmt.Printf("Received a order: %+v\n", order)
 		err := s.r.SaveOrder(*order)
 		if err != nil {
 			log.Println(err)
 		}
-	})
-	s.c.Flush()
-
-	runtime.Goexit()
+	}
 }

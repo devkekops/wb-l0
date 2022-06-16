@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"encoding/json"
+	"errors"
 	"log"
 	"net/http"
 
@@ -22,16 +23,21 @@ func NewBaseHandler(repo storage.OrderRepository) *BaseHandler {
 	}
 
 	bh.Use(middleware.Logger)
-	bh.Get("/{id}", bh.getOrders())
+	bh.Get("/{id}", bh.getOrder())
 
 	return bh
 }
 
-func (bh *BaseHandler) getOrders() http.HandlerFunc {
+func (bh *BaseHandler) getOrder() http.HandlerFunc {
 	return func(w http.ResponseWriter, req *http.Request) {
 		orderID := chi.URLParam(req, "id")
 		order, err := bh.orderRepo.GetOrderByID(orderID)
 		if err != nil {
+			if errors.Is(err, storage.ErrOrderNotExists) {
+				log.Println(err)
+				w.WriteHeader(http.StatusNoContent)
+				return
+			}
 			w.WriteHeader(http.StatusInternalServerError)
 			log.Println(err)
 			return
