@@ -13,7 +13,7 @@ type Subscriber struct {
 	recvCh chan *storage.Order
 }
 
-func NewSubscriber(natsURI string, repo storage.OrderRepository) (*Subscriber, error) {
+func NewSubscriber(natsURI string, natsSubject string, repo storage.OrderRepository) (*Subscriber, error) {
 	nc, err := nats.Connect(natsURI)
 	if err != nil {
 		return nil, err
@@ -24,7 +24,7 @@ func NewSubscriber(natsURI string, repo storage.OrderRepository) (*Subscriber, e
 	}
 
 	recvCh := make(chan *storage.Order)
-	c.BindRecvChan("hello", recvCh)
+	c.BindRecvChan(natsSubject, recvCh)
 
 	return &Subscriber{
 		c:      c,

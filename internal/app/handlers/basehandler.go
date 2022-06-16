@@ -14,18 +14,30 @@ import (
 type BaseHandler struct {
 	*chi.Mux
 	orderRepo storage.OrderRepository
+	fs        http.Handler
 }
 
 func NewBaseHandler(repo storage.OrderRepository) *BaseHandler {
+	root := "./internal/app/static"
+	fs := http.FileServer(http.Dir(root))
+
 	bh := &BaseHandler{
 		Mux:       chi.NewMux(),
 		orderRepo: repo,
+		fs:        fs,
 	}
-
 	bh.Use(middleware.Logger)
+
+	bh.Get("/", bh.getIndex())
 	bh.Get("/{id}", bh.getOrder())
 
 	return bh
+}
+
+func (bh *BaseHandler) getIndex() http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		bh.fs.ServeHTTP(w, r)
+	}
 }
 
 func (bh *BaseHandler) getOrder() http.HandlerFunc {

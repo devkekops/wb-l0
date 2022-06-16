@@ -11,12 +11,13 @@ import (
 )
 
 func Serve(cfg *config.Config) error {
+
 	orderRepo, err := storage.NewOrderRepoDB(cfg.DatabaseURI)
 	if err != nil {
 		log.Fatal(err)
 	}
 
-	subscriber, err := subscriber.NewSubscriber(cfg.NatsURI, orderRepo)
+	subscriber, err := subscriber.NewSubscriber(cfg.NatsURI, cfg.NatsSubject, orderRepo)
 	if err != nil {
 		log.Fatal(err)
 	}

@@ -1,0 +1,86 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<title>JavaScript - read JSON from URL</title>
+    <script src="https://code.jquery.com/jquery-3.2.1.min.js"></script>
+</head>
+
+<body>
+    <form>
+        <label>Enter OrderID:</label>
+        <input required="" autofocus="">
+        <button type="button" class="btn btn-info">Get Info</button>
+    </form>
+    <br>
+    <div class="mypanel"></div>
+
+    <script>
+    function isNotArrayOrObject(what) {
+        return !(Object.prototype.toString.call(what) === '[object Array]' || Object.prototype.toString.call(what) === '[object Object]');
+    }
+    $("button").click(function(){
+        $.ajax({
+            type: "GET",
+            url: "/" + $("input").val(),
+        }).done(function ( data, textStatus, jqXHR) {
+            switch(jqXHR.status) {
+                case 200:
+                    var order = ""
+                    for(var key in data){
+                        if (isNotArrayOrObject(data[key])) {
+                            order += key + ": " + data[key] + '<br>';
+                        }
+                    }
+
+                    var delivery = ""
+                    for(var key in data.delivery){
+                        delivery += key + ": " + data.delivery[key] + '<br>';
+                    }
+
+                    var payment = ""
+                    for(var key in data.payment){
+                        payment += key + ": " + data.payment[key] + '<br>';
+                    }
+
+                    var items = "";
+                    for (i = 0; i < data.items.length; ++i) {
+                        for(var key in data.items[i]){
+                        items += key + ": " + data.items[i][key] + '<br>';
+                        }
+                        items += '<br>'
+                    }
+
+                    var text = 
+                    `<table class="table" border="1">
+                        <thead>
+                            <tr>
+                                <th scope="col">Order</th>
+                                <th scope="col">Delivery</th>
+                                <th scope="col">Payment</th>
+                                <th scope="col">Items</th>
+                            </tr>
+                        </thead>
+                    <tbody>
+                        <tr>
+                            <td> ${order} </td>
+                            <td> ${delivery} </td>
+                            <td> ${payment} </td>
+                            <td> ${items} </td>
+                        </tr>
+                    </tbody>
+                    </table>`
+                    $(".mypanel").html(text);
+                    break
+                case 204:
+                    alert("non-existent order id")
+                    $(".mypanel").empty();
+                    break
+                default:
+                    $(".mypanel").empty();
+                    alert("something whent wrong")
+            }
+        });
+    });
+    </script>
+</body>
+</html>
